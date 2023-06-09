@@ -11,18 +11,18 @@ import os
 # Ubicación de la carpeta con los archivos
 
 path_corr=False
-path_data=None
+path_data="data_test/"
 
-while not path_corr:
-    path_data=input("Ingrese la ruta de la carpeta en donde se ubican los archivos CSV: \n")
-    aux=input(f"Se ha ingresado la siguiente ruta: '{path_data}', de ser correcta, escriba 'y', si no, escriba 'n' y vuelva a agregar el path \n")
-    if aux == "y":
-        path_corr=True
+# while not path_corr:
+#     path_data=input("Ingrese la ruta de la carpeta en donde se ubican los archivos CSV: \n")
+#     aux=input(f"Se ha ingresado la siguiente ruta: '{path_data}', de ser correcta, escriba 'y', si no, escriba 'n' y vuelva a agregar el path \n")
+#     if aux == "y":
+#         path_corr=True
 
 print("en hora buena\n")
 
-namedata=input("A continuación, escriba el nombre de la carpeta en donde se encontrarán los archivos Json que se crearán\n")
-
+# namedata=input("A continuación, escriba el nombre de la carpeta en donde se encontrarán los archivos Json que se crearán\n")
+namedata = "PLPTEST"
 print("---------------------------------- Iniciando Carga de archivos-----------------------------------\n")
 
 print("Este proceso puede demorar unos minutos dependiendo del tamaño de los archivos\n")
