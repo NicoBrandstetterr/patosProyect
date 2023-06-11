@@ -806,20 +806,3 @@ waterwayshydric=pd.DataFrame(junctionhydricfilas_aux,columns=["id","name","type"
 waterwayshydric.to_json(hydricTopology+"/waterways.json",orient='records')
 
 print("Archivos listos para visualizar ubicados en la ruta en donde se encuentra este archivo py")
-
-# Se comprime el archivo de salidas .json
-current_directory = os.getcwd()
-folder_path = os.path.join(current_directory, namedata)
-zip_path = folder_path
-shutil.make_archive(zip_path, "zip", folder_path)
-
-print(f"Se comprime el archivo de visualización {namedata}.zip")
-
-# Ruta de destino para mover la carpeta
-Destino = '/home/emonsalve/EnergyViewer/Archivos_JSON' # Modificable
-ruta_destino = os.path.join(Destino, namedata)
-
-# Mover la carpeta
-shutil.move(folder_path, ruta_destino)
-
-print(f"Se mueve la carpeta de visualización '{namedata}' hacia '{ruta_destino}'")
