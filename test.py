@@ -98,32 +98,32 @@ lbus = [row.id for row in indexbussk.collect()]
 time = plpbarsk.select("time").agg({"time": "max"}).collect()[0][0]
 
 
-def busscenariofunction(dfbusauxlist,pathbus):
+def busscenariofunction(dfbusauxlist: list, pathbus: str):
 	for x in range(nbus): # Para cada barra
 
 		bus_sc_1filas_aux=[]
 		for y in range(1,time+1): # Para cada bloque de tiempo, se agrega un estado de la barra x
 			aux=[]
-			
-			idbus=indexbussk['id'][x]
+			idbus = indexbussk.filter(col('id') == lbus[x]).select('id').collect()[0][0]
 			aux.append(idbus)
 			aux.append(y)
-			aux.append(indexbussk['BarName'][x])
-			aux.append(dfbusauxlist[x]['CMgBar'][y-1])
+			aux.append(indexbussk.filter(col('id') == lbus[x]).select('BarName').collect()[0][0])
+			aux.append(dfbusauxlist[x].filter(col('CMgBar')).select('CMgBar').collect()[y - 1][0])
 			aux.append(aux[-1])
-			aux.append(dfbusauxlist[x]['DemBarE'][y-1])
-			aux.append(dfbusauxlist[x]['DemBarP'][y-1])
-			aux.append(dfbusauxlist[x]['BarRetP'][y-1])
+			aux.append(dfbusauxlist[x].filter(col('DemBarE')).select('DemBarE').collect()[y - 1][0])
+			aux.append(dfbusauxlist[x].filter(col('DemBarP')).select('DemBarP').collect()[y-1][0])
+			aux.append(dfbusauxlist[x].filter(col('DemRetP')).select('DemRetP').collect()[y-1][0])
+
 			bus_sc_1filas_aux.append(aux)
-		bus_sc_1_aux=pd.DataFrame(bus_sc_1filas_aux,columns=['id','time','name','marginal_cost','value','DemBarE','DemBarP','BarRetP'])
-		bus_sc_1_aux.to_json(pathbus+f"/bus_{idbus}.json",orient='records')
+		bus_sc_1_aux = spark.createDataFrame(bus_sc_1filas_aux, ['id', 'time', 'name', 'marginal_cost', 'value', 'DemBarE', 'DemBarP', 'BarRetP'])
+		bus_sc_1_aux.write.json(f"{pathbus}/bus_{idbus}.json")
 
 for hidronum,hidroname in enumerate(hidrolist):
 	
-	dfbussauxx=plpbarsk.query(f"(Hidro=='{hidroname}')").reset_index()
+	dfbussauxx=plpbarsk.filter(col('Hidro') == hidroname)
 	dfbuslist=[]
 	for x in lbus:
 		idaux=x
-		dfbuslist.append(dfbussauxx[dfbussauxx.id==idaux].reset_index(drop=True))
+		dfbuslist.append(dfbussauxx.filter(col('id') == idaux))
 	print(f"{((hidronum+1)/len(hidrolist))*100}% Completado")
 	busscenariofunction(dfbuslist,busscenariolist[hidronum])
