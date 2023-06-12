@@ -57,7 +57,7 @@ hydricTopology=namedata+'/Topology/Hydric'
 os.makedirs(electricTopology,exist_ok=True)
 os.makedirs(hydricTopology,exist_ok=True)
 
-
+# pyspark
 hidrolist=[row.Hidro for row in plpbarsk.select("Hidro").distinct().collect()]
 busscenariolist=[]
 centralscenariolist=[]
@@ -93,3 +93,37 @@ hydrofile = [x for x in range(1,len(hidrolist)+1)]
 with open( namedata+'/Scenarios/hydrologies.json', 'w') as f:
   json.dump(hydrofile, f)
 
+nbus = indexbussk.count()
+lbus = [row.id for row in indexbussk.collect()]
+time = plpbarsk.select("time").agg({"time": "max"}).collect()[0][0]
+
+
+def busscenariofunction(dfbusauxlist,pathbus):
+	for x in range(nbus): # Para cada barra
+
+		bus_sc_1filas_aux=[]
+		for y in range(1,time+1): # Para cada bloque de tiempo, se agrega un estado de la barra x
+			aux=[]
+			
+			idbus=indexbussk['id'][x]
+			aux.append(idbus)
+			aux.append(y)
+			aux.append(indexbussk['BarName'][x])
+			aux.append(dfbusauxlist[x]['CMgBar'][y-1])
+			aux.append(aux[-1])
+			aux.append(dfbusauxlist[x]['DemBarE'][y-1])
+			aux.append(dfbusauxlist[x]['DemBarP'][y-1])
+			aux.append(dfbusauxlist[x]['BarRetP'][y-1])
+			bus_sc_1filas_aux.append(aux)
+		bus_sc_1_aux=pd.DataFrame(bus_sc_1filas_aux,columns=['id','time','name','marginal_cost','value','DemBarE','DemBarP','BarRetP'])
+		bus_sc_1_aux.to_json(pathbus+f"/bus_{idbus}.json",orient='records')
+
+for hidronum,hidroname in enumerate(hidrolist):
+	
+	dfbussauxx=plpbarsk.query(f"(Hidro=='{hidroname}')").reset_index()
+	dfbuslist=[]
+	for x in lbus:
+		idaux=x
+		dfbuslist.append(dfbussauxx[dfbussauxx.id==idaux].reset_index(drop=True))
+	print(f"{((hidronum+1)/len(hidrolist))*100}% Completado")
+	busscenariofunction(dfbuslist,busscenariolist[hidronum])
