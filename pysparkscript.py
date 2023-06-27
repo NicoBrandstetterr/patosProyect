@@ -4,7 +4,7 @@ import random
 import os
 # import pyproj
 from pyspark.sql import SparkSession,Row
-from pyspark.sql.functions import col, trim, regexp_replace, lit, when
+from pyspark.sql.functions import col, trim, regexp_replace, lit, when,udf
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType, FloatType
 import sys
 
@@ -188,51 +188,51 @@ if __name__ == "__main__":
     indhor = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').option('encoding', 'ISO-8859-1').load(path_data+'indhor.csv')
 
     # Creación de las rutas de directorios
-    electricTopology = Path(namedata) / 'Topology' / 'Electric'
-    hydricTopology = Path(namedata) / 'Topology' / 'Hydric'
+    electricTopology = f"{namedata}/Topology/Electric"
+    hydricTopology = f"{namedata}/Topology/Hydric"
 
     # Crear los directorios si no existen
-    electricTopology.mkdir(parents=True, exist_ok=True)
-    hydricTopology.mkdir(parents=True, exist_ok=True)
+    os.makedirs(electricTopology, exist_ok=True)
+    os.makedirs(hydricTopology, exist_ok=True)
 
     # Obtener los valores únicos de la columna 'Hidro' del DataFrame 'plpbar'
     hidrolist = plpbar.select("Hidro").distinct().rdd.flatMap(lambda x: x).collect()
 
-    busscenariolist=[]
-    centralscenariolist=[]
-    linescenariolist=[]
-    reservoirscenariolist=[]
+    busscenariolist = []
+    centralscenariolist = []
+    linescenariolist = []
+    reservoirscenariolist = []
 
     for hidronum in range(len(hidrolist)):
         # Crear los directorios
-        busscenario = Path(namedata) / f'Scenarios/{hidronum+1}/Bus'
-        centralscenario = Path(namedata) / f'Scenarios/{hidronum+1}/Centrals'
-        linescenario = Path(namedata) / f'Scenarios/{hidronum+1}/Lines'
-        reservoirscenario = Path(namedata) / f'Scenarios/{hidronum+1}/Reservoirs'
+        busscenario = f"{namedata}/Scenarios/{hidronum+1}/Bus"
+        centralscenario = f"{namedata}/Scenarios/{hidronum+1}/Centrals"
+        linescenario = f"{namedata}/Scenarios/{hidronum+1}/Lines"
+        reservoirscenario = f"{namedata}/Scenarios/{hidronum+1}/Reservoirs"
 
-        busscenario.mkdir(parents=True, exist_ok=True)
+        os.makedirs(busscenario, exist_ok=True)
         busscenariolist.append(busscenario)
 
-        centralscenario.mkdir(parents=True, exist_ok=True)
+        os.makedirs(centralscenario, exist_ok=True)
         centralscenariolist.append(centralscenario)
 
-        linescenario.mkdir(parents=True, exist_ok=True)
+        os.makedirs(linescenario, exist_ok=True)
         linescenariolist.append(linescenario)
 
-        reservoirscenario.mkdir(parents=True, exist_ok=True)
+        os.makedirs(reservoirscenario, exist_ok=True)
         reservoirscenariolist.append(reservoirscenario)
 
-    marginal_cost_path = Path(namedata) / 'Scenarios/Marginal_cost_percentil'
-    line_flow_percentil_path = Path(namedata) / 'Scenarios/Flow_Line_percentil'
-    generation_sistem_path = Path(namedata) / 'Scenarios/Generation_system'
+    marginal_cost_path = f"{namedata}/Scenarios/Marginal_cost_percentil"
+    line_flow_percentil_path = f"{namedata}/Scenarios/Flow_Line_percentil"
+    generation_sistem_path = f"{namedata}/Scenarios/Generation_system"
 
-    marginal_cost_path.mkdir(parents=True, exist_ok=True)
-    line_flow_percentil_path.mkdir(parents=True, exist_ok=True)
-    generation_sistem_path.mkdir(parents=True, exist_ok=True)
+    os.makedirs(marginal_cost_path, exist_ok=True)
+    os.makedirs(line_flow_percentil_path, exist_ok=True)
+    os.makedirs(generation_sistem_path, exist_ok=True)
+    hydrofile = [x for x in range(1,len(hidrolist)+1)]
 
-
-
-
+    with open( namedata+'/Scenarios/hydrologies.json', 'w') as f:
+        json.dump(hydrofile, f)
 
     # Número de horas de bloques temporales del proyecto
     time=plpbar.agg({"time": "max"}).collect()[0][0]
@@ -257,182 +257,109 @@ if __name__ == "__main__":
 
     print("Creando Archivos Bus en Scenario \n")
 
-    # Definir la estructura del DataFrame
-    schema = StructType([
-        StructField("id", IntegerType(), True),
-        StructField("time", IntegerType(), True),
-        StructField("name", StringType(), True),
-        StructField("marginal_cost", FloatType(), True),
-        StructField("value", FloatType(), True),
-        StructField("DemBarE", FloatType(), True),
-        StructField("DemBarP", FloatType(), True),
-        StructField("BarRetP", FloatType(), True)
-    ])
 
     def busscenariofunction(dfbusauxlist, pathbus):
-        for x in range(nbus): # Para cada barra
-            bus_sc_1filas_aux=[]
-            for y in range(1,time+1): # Para cada bloque de tiempo, se agrega un estado de la barra x
-                aux=[]
-                
-                idbus=lbus[x]
-                aux.append(idbus)
-                aux.append(y)
-                aux.append(indexbus.filter(indexbus.id == idbus).select('BarName').first()[0])
-                aux.append(dfbusauxlist[x].filter(col('time') == y).select('CMgBar').first()[0])
-                aux.append(aux[-1])
-                aux.append(dfbusauxlist[x].filter(col('time') == y).select('DemBarE').first()[0])
-                aux.append(dfbusauxlist[x].filter(col('time') == y).select('DemBarP').first()[0])
-                aux.append(dfbusauxlist[x].filter(col('time') == y).select('BarRetP').first()[0])
-                bus_sc_1filas_aux.append(aux)
-            bus_sc_1_aux=spark.createDataFrame(bus_sc_1filas_aux, schema)
-            bus_sc_1_aux.write.json(pathbus+f"/bus_{idbus}.json")
+        for x in range(nbus): 
+            idbus = lbus[x]
+            dfbusaux = dfbusauxlist[x]
+            aux = dfbusaux.withColumn('id', lit(idbus))\
+                        .withColumn('name', lit(indexbus.filter(indexbus.id == idbus).select('BarName').first()[0]))\
+                        .withColumn('marginal_cost', dfbusaux['CMgBar'])\
+                        .withColumn('value', dfbusaux['CMgBar'])\
+                        .withColumn('DemBarE', dfbusaux['DemBarE'])\
+                        .withColumn('DemBarP', dfbusaux['DemBarP'])\
+                        .withColumn('BarRetP', dfbusaux['BarRetP'])
+        
+            aux.write.json(pathbus +  f"/bus_{idbus}.json")
 
     for hidronum, hidroname in enumerate(hidrolist):
-        dfbussauxx=plpbar.filter(col("Hidro")==hidroname)
-        dfbuslist=[]
-        for x in lbus:
-            idaux=x
-            dfbuslist.append(dfbussauxx.filter(dfbussauxx.id==idaux))
+        dfbussauxx = plpbar.filter(col("Hidro") == hidroname)
+        dfbuslist = [dfbussauxx.filter(dfbussauxx.id == idaux) for idaux in lbus]
         print(f"{((hidronum+1)/len(hidrolist))*100}% Completado")
-        busscenariofunction(dfbuslist,busscenariolist[hidronum])
+        busscenariofunction(dfbuslist, busscenariolist[hidronum])
 
 
+        print("Creando Archivos Central en Scenario \n")
 
-    print("Creando Archivos Central en Scenario \n")
+    def centralscenariofunction(dfcenauxlist, cenpath):
+        for x in range(ngen):
+            idaux = indexcen.filter(indexcen['index'] == x).select('id').first()[0]
+            dfcen = dfcenauxlist[x]
+            bus_id = indexcen.filter(indexcen['index'] == x).select('bus_id').first()[0]
+            if bus_id == 0 or bus_id is None:
+                continue
 
-    def centralscenariofunction(dfcenauxlist,cenpath):
-        for x in range(ngen):  # Para cada generador (central)
-            if indexcen.where(col('id') == x).first()['bus_id'] is None:  # No existe la barra 0, por lo que no se consideran dichos generadores
-                pass
-            else:
-                central_sc_1filas_aux = []
-                for y in range(1, time + 1):  # Para cada bloque de tiempo, se agrega un estado del generador x
-                    aux = []
-                    aux.append(indexcen.where(col('id') == x).first()['id'])
-                    aux.append(y)
-                    aux.append(int(indexcen.where(col('id') == x).first()['bus_id']))
-                    aux.append(indexcen.where(col('id') == x).first()['CenName'])
-                    row_aux = dfcenauxlist.where((col('id') == x) & (col('time') == y)).first()
-                    if row_aux is None:
-                        for i in range(4):
-                            aux.append(0)
-                    else:
-                        aux.append(row_aux['CenPgen'])
-                        aux.append(row_aux['CenPgen'])
-                        aux.append(row_aux['CenCVar'])
-                        aux.append(row_aux['CenQgen'])
-                    central_sc_1filas_aux.append(aux)
-                central_sc_1_aux = spark.createDataFrame(central_sc_1filas_aux, ['id', 'time', 'bus_id', 'name', 'CenPgen', 'value', 'CenCVar', 'CenQgen'])
-                central_sc_1_aux.write.json(cenpath + f"/central_{indexcen.where(col('id') == x).first()['id']}.json")
+            time = dfcen.select('time').rdd.flatMap(lambda x: x).collect()
+            CenPgen = dfcen.select('CenPgen').rdd.flatMap(lambda x: x).collect() if dfcen.count() > 0 else [0]*len(time)
+            CenCVar = dfcen.select('CenCVar').rdd.flatMap(lambda x: x).collect() if dfcen.count() > 0 else [0]*len(time)
+            CenQgen = dfcen.select('CenQgen').rdd.flatMap(lambda x: x).collect() if dfcen.count() > 0 else [0]*len(time)
 
+            aux_df = dfcen.withColumn('id', lit(idaux))\
+                        .withColumn('time', lit(time))\
+                        .withColumn('bus_id', lit(int(bus_id)))\
+                        .withColumn('name', lit(indexcen.filter(indexcen.id == idaux).select('CenName').first()[0]))\
+                        .withColumn('CenPgen', lit(CenPgen))\
+                        .withColumn('value', lit(CenPgen))\
+                        .withColumn('CenCVar', lit(CenCVar))\
+                        .withColumn('CenQgen', lit(CenQgen))
+
+            aux_df.write.json(cenpath + f"/central_{idaux}.json")
+            
     for hidronum, hidroname in enumerate(hidrolist):
-        dfcensauxx = plpcen.filter(col('Hidro') == hidroname)
-        dfcenlist = dfcensauxx
+        dfcensauxx = plpcen.filter(col("Hidro") == hidroname)
+        dfcenlist = [dfcensauxx.filter(dfcensauxx.id == idaux) for idaux in [indexcen.filter(indexcen['index'] == x).select('id').first()[0] for x in range(ngen)]]
         print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
         centralscenariofunction(dfcenlist, centralscenariolist[hidronum])
 
 
     print("Creando Archivos Lineas en Scenario \n")
     def linescenariofunction(dflinelist, linpath):
-        for x in range(nlin):  # Para cada linea
-            line_sc_1filas_aux = []
-            for y in range(1, time + 1):  # Para cada bloque de tiempo, se agrega un estado de la linea x
-                aux = []
-                idaux = linesfinal.where(col('id') == x).first()['id']
-                bus_a_id = linesfinal.where(col('id') == x).first()['bus_a']
-                bus_b_id = linesfinal.where(col('id') == x).first()['bus_b']
-                name = f"{indexbus.where(col('id') == (bus_a_id - 1)).first()['BarName']}->{indexbus.where(col('id') == (bus_b_id - 1)).first()['BarName']}"
-                aux.append(idaux)
-                aux.append(y)
-                aux.append(name)
-                aux.append(bus_a_id)
-                aux.append(bus_b_id)
-                row_aux = dflinelist.where((col('id') == x) & (col('time') == y)).first()
-                if row_aux is None:
-                    for i in range(2):
-                        aux.append(0)
-                else:
-                    aux.append(row_aux['LinFluP'])
-                    aux.append(row_aux['LinFluP'])
-                    aux.append(row_aux['capacity'])
-                line_sc_1filas_aux.append(Row(id=aux[0], time=aux[1], name=aux[2], bus_a=aux[3], bus_b=aux[4], flow=aux[5], value=aux[6], capacity=aux[7]))
-
-            line_sc_1_aux = spark.createDataFrame(line_sc_1filas_aux)
-            line_sc_1_aux.write.json(linpath + f"/line_{idaux}.json")
+        for x in range(nlin):
+            idaux = linesfinal.filter(linesfinal.index == x).select('id').first()[0]
+            dflinea = dflinelist[x]
+            aux_df = dflinea.withColumn('id', lit(idaux))\
+                            .withColumn('time',dflinea('time'))\
+                            .withColumn('name', lit(linesfinal.filter(linesfinal.id == idaux).select('LinName').first()[0]))\
+                            .withColumn('bus_a', lit(linesfinal.filter(linesfinal.id == idaux).select('bus_a').first()[0]))\
+                            .withColumn('bus_b', lit(linesfinal.filter(linesfinal.id == idaux).select('bus_b').first()[0]))\
+                            .withColumn('flow', dflinea['LinFluP'])\
+                            .withColumn('value', dflinea['LinFluP'])\
+                            .withColumn('capacity', dflinea['capacity'])
+            
+            aux_df.write.json(linpath + f"/line_{idaux}.json")
 
     for hidronum, hidroname in enumerate(hidrolist):
-        dflinesaux = plplin.filter(col('Hidro') == hidroname)
-        dflinelist = dflinesaux
+        dflinesaux = plplin.filter(col("Hidro") == hidroname)
+        dflinelist = [dflinesaux.filter(dflinesaux.id == idaux) for idaux in range(nlin)]
         print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
         linescenariofunction(dflinelist, linescenariolist[hidronum])
-
-
-    def linescenariofunction(dflinelist, linpath):
-        for x in range(nlin):  # Para cada linea
-            line_sc_1filas_aux = []
-            for y in range(1, time + 1):  # Para cada bloque de tiempo, se agrega un estado de la linea x
-                aux = []
-                idaux = linesfinal.where(col('id') == x).first()['id']
-                bus_a_id = linesfinal.where(col('id') == x).first()['bus_a']
-                bus_b_id = linesfinal.where(col('id') == x).first()['bus_b']
-                name = f"{indexbus.where(col('id') == (bus_a_id - 1)).first()['BarName']}->{indexbus.where(col('id') == (bus_b_id - 1)).first()['BarName']}"
-                aux.append(idaux)
-                aux.append(y)
-                aux.append(name)
-                aux.append(bus_a_id)
-                aux.append(bus_b_id)
-                row_aux = dflinelist.where((col('id') == x) & (col('time') == y)).first()
-                if row_aux is None:
-                    for i in range(2):
-                        aux.append(0)
-                else:
-                    aux.append(row_aux['LinFluP'])
-                    aux.append(row_aux['LinFluP'])
-                    aux.append(row_aux['capacity'])
-                line_sc_1filas_aux.append(Row(id=aux[0], time=aux[1], name=aux[2], bus_a=aux[3], bus_b=aux[4], flow=aux[5], value=aux[6], capacity=aux[7]))
-
-            line_sc_1_aux = spark.createDataFrame(line_sc_1filas_aux)
-            line_sc_1_aux.write.json(linpath + f"/line_{idaux}.json")
-
-    for hidronum, hidroname in enumerate(hidrolist):
-        dflinesaux = plplin.filter(col('Hidro') == hidroname)
-        dflinelist = dflinesaux
-        print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
-        linescenariofunction(dflinelist, linescenariolist[hidronum])
-
-
-
 
     print("Creando Archivos Reservoirs en Scenario \n")
-    def resscenariofunction(dfreslist, respath):
-        for x in range(nres):
-            res_sc_filas_aux = []
-            idaux = indexres.where(col('id') == x).first()['id']
-            name = indexres.where(col('id') == x).first()['EmbName']
-            junction_id = junctionsinfo.filter(col('CenName') == name).first()['id']
-            for y in range(1, time + 1):  # Para cada bloque de tiempo, se agrega un estado del embalse x
-                aux = []
-                aux.append(y)
-                aux.append(idaux)
-                aux.append(junction_id)
-                aux.append(name)
-                row_aux = dfreslist.where((col('id') == x) & (col('time') == y)).first()
-                if row_aux is None:
-                    for i in range(2):
-                        aux.append(0)
-                else:
-                    aux.append((row_aux['EmbFac'] * row_aux['EmbVfin']) / 1000000)
-                    aux.append(aux[-1])
-                res_sc_filas_aux.append(Row(time=aux[0], id=aux[1], junction_id=aux[2], name=aux[3], level=aux[4], value=aux[5]))
-                
-            res_sc_1_aux = spark.createDataFrame(res_sc_filas_aux)
-            res_sc_1_aux.write.json(respath + f"/reservoir_{idaux}.json")
 
-    for hidronum, hidroname in enumerate(hidrolist):
-        dfresaux = reservoirs.filter(col('Hidro') == hidroname)
-        dfreslist = dfresaux
-        print(f"{((hidronum+1) / len(hidrolist)) * 100}% Completado")
-        resscenariofunction(dfreslist, reservoirscenariolist[hidronum])
+def resscenariofunction(dfreslist, respath):
+    for x in range(nres):
+        idaux = indexres.filter(indexres['index'] == x).select('id').first()[0]
+        name = indexres.filter(indexres['id'] == idaux).select('EmbName').first()[0]
+        junction_id = junctionsinfo.filter(junctionsinfo['CenName'] == name).select('id').first()[0]
 
-spark.stop
+        level_udf = udf(lambda EmbFac, EmbVfin: (EmbFac * EmbVfin) / 1000000, FloatType())
+        
+        dfres = dfreslist[x]
+        dfres = dfres.withColumn('level', level_udf(dfres['EmbFac'], dfres['EmbVfin']))
+        
+        aux_df = dfres.withColumn('id', lit(idaux))\
+                      .withColumn('time', dfres['time'])\
+                      .withColumn('junction_id', lit(junction_id))\
+                      .withColumn('name', lit(name))\
+                      .withColumn('level',dfres('level'))\
+                      .withColumn('value', dfres['level'])
+
+        aux_df.write.json(respath + f"/reservoir_{idaux}.json")
+
+for hidronum, hidroname in enumerate(hidrolist):
+    dfresaux = reservoirs.filter(col("Hidro") == hidroname)
+    dfreslist = [dfresaux.filter(dfresaux.id == idaux) for idaux in [indexres.filter(indexres['index'] == x).select('id').first()[0] for x in range(nres)]]
+    print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
+    resscenariofunction(dfreslist, reservoirscenariolist[hidronum])
+
+spark.stop()
