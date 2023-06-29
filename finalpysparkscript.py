@@ -29,7 +29,6 @@ if __name__ == "__main__":
     print("--------Cargando Archivo plpbar-------------\n")
 
     # Cargar el archivo csv en un DataFrame de Spark
-    path_data= '/uhadoop2023/energyviewer/data_test'
     plpbar = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').load(path_data+'plpbar.csv')
 
     # Cambiar los nombres de las columnas
@@ -95,7 +94,7 @@ if __name__ == "__main__":
 
     plpcen.createOrReplaceTempView("plpcen")
     centrales.createOrReplaceTempView("centrales")
-    query = """SELECT centrales.id AS cen_id, plpcen.Hidro AS hydro, plpcen.time AS time, plpcen.CenPgen AS CenPgen, plpcen.CenCVar, plpcen.CenQgen
+    query = """SELECT centrales.cen_id AS cen_id, plpcen.Hidro AS hydro, plpcen.time AS time, plpcen.CenPgen AS CenPgen, plpcen.CenCVar, plpcen.CenQgen
     FROM centrales, plpcen 
     WHERE centrales.cen_name = plpcen.CenName
     ORDER BY hydro ASC, cen_id ASC, time ASC
@@ -104,9 +103,10 @@ if __name__ == "__main__":
 
     plplin.createOrReplaceTempView("plplin")
     lineas.createOrReplaceTempView("lineas")
-    query = """SELECT lineas.id AS lin_id, plplin.Hidro AS hydro, plplin.time AS time, plplin.LinFluP AS LinFluP, plplin.capacity
+    query = """SELECT lineas.lin_id AS lin_id, plplin.Hidro AS hydro, plplin.time AS time, plplin.LinFluP AS LinFluP, plplin.capacity
     FROM lineas, plplin 
     WHERE lineas.LinName = plplin.LinName
     ORDER BY hydro ASC, lin_id ASC, time ASC
     """
     lin_dynamic = spark.sql(query)
+    spark.stop()

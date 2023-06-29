@@ -55,10 +55,8 @@ if __name__ == "__main__":
 
     print("--------Cargando Archivo plpcen-------------\n")
 
-    # Cargar el archivo csv en un DataFrame de Spark
     plpcen = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').load(path_data+'plpcen.csv')
 
-    # Cambiar los nombres de las columnas
     plpcen = plpcen.toDF("Hidro","time","TipoEtapa","id","CenName","tipo","bus_id","BarName","CenQgen","CenPgen","CenEgen","CenInyP","CenInyE","CenRen","CenCVar","CenCostOp","CenPMax")
 
     # Eliminar los espacios en las columnas 'CenName' y 'Hidro'
@@ -88,29 +86,6 @@ if __name__ == "__main__":
     cols = ['min_power', 'max_power', 'effinciency', 'CVar', 'VembIn', 'VembFin', 'VembMin', 'VembMax', 'cotaMínima']
     for c in cols:
         centralsinfo = centralsinfo.withColumn(c, regexp_replace(c, ',', '.').cast('float'))
-
-    # Cargar el archivo 'hydric_adicional.csv'
-    hydric_adicional = spark.read.options(delimiter=';').format('csv').option('header', 'true').option('inferSchema', 'true').load(f'{path_data}/hydric_adicional.csv')
-
-    # Cargar el archivo 'centralestype.csv'
-    tiposcentrales = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').load(path_data+'centralestype.csv')
-    tiposcentrales = tiposcentrales.withColumnRenamed("cen_name", "CenName")
-
-    # Unir indexcen y tiposcentrales en base a 'CenName'
-    typecentrals = indexcen.join(tiposcentrales, 'CenName', 'inner')
-
-    # Reemplazar los valores en la columna 'tipo' en plpcen basándose en typecentrals
-    # Asumiendo que 'id' y 'CenName' son únicos en typecentrals
-    typecentrals = typecentrals.withColumnRenamed('tipo', 'new_tipo')
-
-    # Unir plpcen y typecentrals en base a 'id' y 'CenName'
-    plpcen = plpcen.join(typecentrals.select('id', 'CenName', 'new_tipo'), on=['id', 'CenName'], how='left')
-
-    # Crear una nueva columna 'tipo' que toma el valor de 'new_tipo' si este no es nulo, y si no, toma el valor de la antigua columna 'tipo'
-    plpcen = plpcen.withColumn('tipo', when(col('new_tipo').isNull(), col('tipo')).otherwise(col('new_tipo')))
-
-    # Finalmente, puedes descartar la columna 'new_tipo'
-    plpcen = plpcen.drop('new_tipo')
 
 
     print("--------Cargando Archivo plplin-------------\n")
@@ -150,43 +125,7 @@ if __name__ == "__main__":
     linesfinal = linesfinal.withColumn("id", col("linesinfo_id").cast(IntegerType())).drop('linesinfo_id')
 
 
-    print("--------Cargando Archivo plpemb-------------\n")
-
-    # Cargando el archivo plpemb.csv en un DataFrame de Spark
-    reservoirs = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').load(path_data+'plpemb.csv')
-
-    # Cambiando los nombres de las columnas
-    reservoirs = reservoirs.withColumnRenamed('Bloque', 'time') \
-        .withColumnRenamed('EmbNum', 'id') \
-        .withColumnRenamed('EmbNom', 'EmbName')
-
-    # Removiendo los espacios en las columnas 'EmbName' y 'Hidro'
-    reservoirs = reservoirs.withColumn('EmbName', regexp_replace('EmbName', ' ', ''))
-    reservoirs = reservoirs.withColumn('Hidro', regexp_replace('Hidro', ' ', ''))
-    reservoirs = reservoirs.withColumn("time", col("time").cast("int"))
-
-    # Seleccionando las columnas 'id', 'EmbName' y eliminando duplicados
-    indexres = reservoirs.select('id', 'EmbName').dropDuplicates()
-
-    # Filtrando el DataFrame centralsinfo según el tipo
-    junctionsinfo = centralsinfo.filter(centralsinfo['type'].isin(["E", 'S', 'R']))
-    reservoirsinfo = centralsinfo.filter(centralsinfo['type'].isin(["E"]))
-
-    # Renombrando la columna 'CenName' a 'EmbName'
-    reservoirsinfo = reservoirsinfo.withColumnRenamed('CenName', 'EmbName')
-
-    # Asegurando que 'id' es de tipo Integer
-    reservoirsinfo = reservoirsinfo.withColumn("id", col("id").cast(IntegerType()))
-    indexres = indexres.withColumn("id", col("id").cast(IntegerType()))
-
-    # Uniendo 'reservoirsinfo' con 'indexres' en base a 'EmbName' y actualizando 'id' en 'reservoirsinfo' con 'id' de 'indexres'
-    reservoirsinfo = reservoirsinfo.join(indexres.withColumnRenamed('id', 'indexres_id'), 'EmbName', 'left')
-    reservoirsinfo = reservoirsinfo.withColumn("id", col("indexres_id").cast(IntegerType())).drop('indexres_id')
-    print("--------Cargando Archivo indhor-------------\n")
-
-    # Cargando el archivo indhor.csv en un DataFrame de Spark
-    indhor = spark.read.format('csv').option('header', 'true').option('inferSchema', 'true').option('encoding', 'ISO-8859-1').load(path_data+'indhor.csv')
-
+    
     # Creación de las rutas de directorios
     electricTopology = f"{namedata}/Topology/Electric"
     hydricTopology = f"{namedata}/Topology/Hydric"
@@ -201,14 +140,14 @@ if __name__ == "__main__":
     busscenariolist = []
     centralscenariolist = []
     linescenariolist = []
-    reservoirscenariolist = []
+
 
     for hidronum in range(len(hidrolist)):
         # Crear los directorios
         busscenario = f"{namedata}/Scenarios/{hidronum+1}/Bus"
         centralscenario = f"{namedata}/Scenarios/{hidronum+1}/Centrals"
         linescenario = f"{namedata}/Scenarios/{hidronum+1}/Lines"
-        reservoirscenario = f"{namedata}/Scenarios/{hidronum+1}/Reservoirs"
+       
 
         os.makedirs(busscenario, exist_ok=True)
         busscenariolist.append(busscenario)
@@ -219,16 +158,6 @@ if __name__ == "__main__":
         os.makedirs(linescenario, exist_ok=True)
         linescenariolist.append(linescenario)
 
-        os.makedirs(reservoirscenario, exist_ok=True)
-        reservoirscenariolist.append(reservoirscenario)
-
-    marginal_cost_path = f"{namedata}/Scenarios/Marginal_cost_percentil"
-    line_flow_percentil_path = f"{namedata}/Scenarios/Flow_Line_percentil"
-    generation_sistem_path = f"{namedata}/Scenarios/Generation_system"
-
-    os.makedirs(marginal_cost_path, exist_ok=True)
-    os.makedirs(line_flow_percentil_path, exist_ok=True)
-    os.makedirs(generation_sistem_path, exist_ok=True)
     hydrofile = [x for x in range(1,len(hidrolist)+1)]
 
     with open( namedata+'/Scenarios/hydrologies.json', 'w') as f:
@@ -248,12 +177,7 @@ if __name__ == "__main__":
     nlin=indexlin.count()
 
     # Número de Reservoirs
-    nres = reservoirs.select("EmbName").distinct().count()
 
-    print(time)
-    print("tipo time", type(time))
-    print(nbus)
-    print(type(nbus))
 
     print("Creando Archivos Bus en Scenario \n")
 
@@ -333,33 +257,5 @@ if __name__ == "__main__":
         dflinelist = [dflinesaux.filter(dflinesaux.id == idaux) for idaux in range(nlin)]
         print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
         linescenariofunction(dflinelist, linescenariolist[hidronum])
-
-    print("Creando Archivos Reservoirs en Scenario \n")
-
-def resscenariofunction(dfreslist, respath):
-    for x in range(nres):
-        idaux = indexres.filter(indexres['index'] == x).select('id').first()[0]
-        name = indexres.filter(indexres['id'] == idaux).select('EmbName').first()[0]
-        junction_id = junctionsinfo.filter(junctionsinfo['CenName'] == name).select('id').first()[0]
-
-        level_udf = udf(lambda EmbFac, EmbVfin: (EmbFac * EmbVfin) / 1000000, FloatType())
-        
-        dfres = dfreslist[x]
-        dfres = dfres.withColumn('level', level_udf(dfres['EmbFac'], dfres['EmbVfin']))
-        
-        aux_df = dfres.withColumn('id', lit(idaux))\
-                      .withColumn('time', dfres['time'])\
-                      .withColumn('junction_id', lit(junction_id))\
-                      .withColumn('name', lit(name))\
-                      .withColumn('level',dfres('level'))\
-                      .withColumn('value', dfres['level'])
-
-        aux_df.write.json(respath + f"/reservoir_{idaux}.json")
-
-for hidronum, hidroname in enumerate(hidrolist):
-    dfresaux = reservoirs.filter(col("Hidro") == hidroname)
-    dfreslist = [dfresaux.filter(dfresaux.id == idaux) for idaux in [indexres.filter(indexres['index'] == x).select('id').first()[0] for x in range(nres)]]
-    print(f"{((hidronum + 1) / len(hidrolist)) * 100}% Completado")
-    resscenariofunction(dfreslist, reservoirscenariolist[hidronum])
 
 spark.stop()
